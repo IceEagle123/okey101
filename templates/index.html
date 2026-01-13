@@ -1,0 +1,1145 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, orientation=landscape">
+    <title>101 Okey Pro Online</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+    <style>
+        * {
+            -webkit-tap-highlight-color: transparent !important;
+            -webkit-touch-callout: none !important;
+            -webkit-user-select: none !important;
+            user-select: none !important;
+            outline: none !important;
+            box-sizing: border-box;
+        }
+
+        body { 
+            background-color: #2E8B57; overflow: hidden; 
+            display: flex; justify-content: center; align-items: center;
+            font-family: sans-serif; touch-action: none; width: 100vw; height: 100vh;
+        }
+
+        /* MASA DÜZENİ */
+        #masa-container {
+            position: relative; width: 100%; height: 100%; overflow: hidden; display: flex; justify-content: center; align-items: center;
+        }
+        #masa-kece { 
+            position: absolute;
+            top: 38%; left: 50%; transform: translate(-50%, -50%); /* Masayı biraz daha yukarı al ve küçült */
+            width: 85%; height: 55%; /* Rakiplerin görünmesi için boyutu ideal orana çektik */
+            background: #2E8B57; border-radius: 150px; border: 15px solid #5d4037; 
+            box-shadow: inset 0 0 50px rgba(0,0,0,0.5); 
+            /* Flex yerine Absolute yerleşim kullanıyoruz */
+        }
+
+        /* DESTE VE TAŞ BOYUTLARI (BİREBİR BOY) */
+        #deste {
+            position: absolute;
+            top: 50%; left: 20%; transform: translate(-50%, -50%); /* Sol tarafa, kenara yakın */
+            width: 75px; height: 105px; 
+            background: #b71c1c; /* Kırmızı taş arkası rengi */
+            background-image: radial-gradient(#7f0000 20%, transparent 20%); /* Desen */
+            background-size: 8px 8px;
+            border: 2px solid #fff; border-radius: 6px;
+            display: flex; align-items: center; justify-content: center; cursor: pointer;
+            box-shadow: 0 5px 10px rgba(0,0,0,0.6);
+            position: relative;
+        }
+        #deste::after {
+            content: 'ÇEK'; color: white; font-weight: bold; font-size: 14px;
+            text-shadow: 0 1px 3px black;
+        }
+
+        #at-yeri {
+            position: absolute;
+            top: 50%; left: 80%; transform: translate(-50%, -50%); /* Sağ tarafa, kenara yakın */
+            width: 350px; height: 140px; /* Biraz daha genişletildi */
+            border: 4px dashed #f4a261; border-radius: 12px;
+            background: rgba(0,0,0,0.6); /* Daha belirgin koyu zemin */
+            display: flex; align-items: center; 
+            overflow-x: auto; /* Taşlar sığmazsa kaydır */
+            padding: 0 10px;
+            cursor: pointer; /* Tıklanabilir olduğunu göster */
+        }
+        
+        #at-yeri::before {
+            content: 'ATILAN TAŞLAR';
+            position: absolute; top: -25px; left: 50%; transform: translateX(-50%);
+            color: #f4a261; font-weight: bold; font-size: 14px;
+            white-space: nowrap;
+            text-shadow: 1px 1px 2px black;
+        }
+        
+        /* Atılan taşların özel görünümü */
+        #at-yeri .tas {
+            position: relative; top: auto; left: auto; /* Absolute'u iptal et */
+            flex-shrink: 0; margin-right: -35px; /* Üst üste binme efekti */
+            transform: scale(0.9); /* Biraz küçült */
+            pointer-events: none; /* Tıklamayı üstteki div (at-yeri) alsın */
+        }
+        
+        #at-yeri:hover {
+            background: rgba(244, 162, 97, 0.2); /* Üzerine gelince hafif parlasın */
+        }
+
+        /* ISTAKA YAPISI */
+        #istaka {
+            width: 98%; max-width: 1600px; margin: 0 auto; /* Ekrana yay ve ortala */
+            height: 170px; background: linear-gradient(to bottom, #5d4037, #2a1b19); /* Yükseklik azaltıldı, rakipler kapanmasın */
+            border: 5px solid #1b110f; border-radius: 15px; display: grid; 
+            grid-template-columns: repeat(15, 1fr); grid-template-rows: repeat(2, 1fr); 
+            gap: 6px; padding: 10px;
+            box-shadow: 0 -5px 15px rgba(0,0,0,0.5);
+        }
+
+        .yuva { 
+            background: rgba(0,0,0,0.3); border-radius: 4px; 
+            position: relative; width: 100%; height: 100%;
+            display: flex; align-items: center; justify-content: center;
+        }
+
+        /* TAŞIN GERÇEK BOYUTU VE GÖRÜNÜMÜ */
+        .tas { 
+            width: 90%; height: 90%; /* Yuvaya sığacak şekilde esnek */
+            max-width: 55px; max-height: 75px; /* Masaüstünde çok büyümesin */
+            background: #fdf5e6; color: black;
+            border-radius: 5px; display: flex; align-items: center; justify-content: center; 
+            font-weight: bold; font-size: clamp(14px, 4vw, 28px); /* Font boyutu dinamik */
+            box-shadow: 0 4px 0 #bcbcbc, inset 0 1px 2px white; 
+            position: relative; z-index: 10; /* Absolute yerine relative kullanıyoruz ki ortalansın */
+            cursor: grab; transition: transform 0.1s, box-shadow 0.1s;
+        }
+
+        .selected {
+            transform: translateY(-20px) !important;
+            box-shadow: 0 0 15px #3498db !important;
+            border: 2px solid #3498db !important;
+        }
+
+        .dragging { 
+            position: fixed !important; 
+            z-index: 10000 !important; 
+            pointer-events: none; 
+            opacity: 1; 
+            transform: none !important; /* Boyut değişmesin */
+            transition: none !important; /* Hareket eş zamanlı olsun (gecikmesiz) */
+            box-shadow: 0 25px 50px rgba(0,0,0,0.7) !important; /* Daha belirgin gölge */
+        }
+
+        #butonlar { display: flex; gap: 15px; position: absolute; bottom: 280px; left: 50%; transform: translateX(-50%); z-index: 50; }
+        .btn-okey {
+            background: #f4a261; color: #2a1b19; border: none; padding: 10px 20px;
+            border-radius: 8px; font-weight: bold; cursor: pointer; font-size: 16px;
+            box-shadow: 0 3px 0 #d35400;
+        }
+        .btn-okey:active { transform: translateY(2px); box-shadow: none; }
+        .btn-ac { background: #27ae60; color: white; box-shadow: 0 3px 0 #1e8449; }
+
+        .btn-mic {
+            background: #e74c3c; color: white; border: none; padding: 10px 15px;
+            border-radius: 50%; font-weight: bold; cursor: pointer; font-size: 20px;
+            box-shadow: 0 3px 0 #c0392b; display: flex; align-items: center; justify-content: center;
+            width: 50px; height: 50px;
+        }
+        .btn-mic.active { background: #27ae60; box-shadow: 0 3px 0 #1e8449; animation: pulse 2s infinite; }
+
+        .seri-grubu {
+            background: rgba(255,255,255,0.05); padding: 8px; margin-bottom: 10px;
+            border-radius: 6px; border-left: 5px solid #f4a261;
+            cursor: pointer; transition: background 0.2s;
+        }
+        .seri-grubu:hover { background: rgba(255,255,255,0.15); }
+
+        .okey-yildizi {
+            position: absolute; top: 2px; right: 2px; color: #f1c40f; font-size: 16px;
+            text-shadow: 1px 1px 2px rgba(0,0,0,0.8);
+        }
+        
+        #gosterge-alani {
+            position: absolute; top: -15px; left: -25px; transform: rotate(-15deg);
+            pointer-events: none; z-index: 5;
+        }
+
+        @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(39, 174, 96, 0.7); } 70% { box-shadow: 0 0 0 10px rgba(39, 174, 96, 0); } 100% { box-shadow: 0 0 0 0 rgba(39, 174, 96, 0); } }
+
+        /* OYUNCU KONUMLARI */
+        .player-slot { position: absolute; display: flex; flex-direction: column; align-items: center; color: white; text-shadow: 1px 1px 2px black; }
+        .player-avatar { width: 60px; height: 60px; background: #34495e; border-radius: 50%; border: 3px solid #f4a261; display: flex; align-items: center; justify-content: center; font-size: 24px; margin-bottom: 5px; position: relative; }
+        .player-info { background: rgba(0,0,0,0.7); padding: 5px 10px; border-radius: 10px; text-align: center; }
+        .player-name { font-weight: bold; color: #f4a261; }
+        .player-score { font-size: 12px; color: #e74c3c; }
+        .player-team { position: absolute; top: -5px; right: -5px; background: #e67e22; color: white; font-size: 10px; padding: 2px 5px; border-radius: 4px; font-weight: bold; }
+        
+        /* Konumlar */
+        #player-bottom { bottom: 0; left: 50%; transform: translateX(-50%); z-index: 60; width: 100%; padding-bottom: 10px; } /* BEN - En alta sabitle */
+        #player-top { top: 20px; left: 50%; transform: translateX(-50%); } /* ORTAK */
+        #player-left { top: 50%; left: 20px; transform: translateY(-50%); } /* RAKİP 1 */
+        #player-right { top: 50%; right: 20px; transform: translateY(-50%); } /* RAKİP 2 */
+
+        /* Takım Skorları */
+        #takim-skorlari { position: absolute; top: 20px; left: 20px; background: rgba(0,0,0,0.8); padding: 10px; border-radius: 10px; color: white; border: 1px solid #f4a261; }
+        
+        /* AÇILAN ELLER ALANLARI */
+        .opened-area { position: absolute; display: flex; flex-wrap: wrap; gap: 10px; pointer-events: none; z-index: 20; justify-content: center; align-content: center; }
+        .opened-area > div { pointer-events: auto; transform: scale(1.2); margin: 10px; } /* Perler daha büyük */
+
+        #area-top { top: 10%; left: 50%; transform: translateX(-50%); width: 60%; height: 25%; overflow-y: auto; align-items: flex-start; }
+        #area-bottom { bottom: 20%; left: 50%; transform: translateX(-50%); width: 60%; height: 25%; overflow-y: auto; align-items: flex-end; }
+        #area-left { top: 50%; left: 2%; transform: translateY(-50%); width: 20%; height: 80%; overflow-y: auto; flex-direction: column; align-items: flex-start; }
+        #area-right { top: 50%; right: 2%; transform: translateY(-50%); width: 20%; height: 80%; overflow-y: auto; flex-direction: column; align-items: flex-end; }
+
+        #sure-sayaci {
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); /* Masanın tam ortası */
+            width: 60px; height: 60px;
+            border-radius: 50%;
+            background: rgba(0,0,0,0.6);
+            border: 3px solid #f4a261;
+            color: white;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 24px; font-weight: bold;
+            box-shadow: 0 0 10px rgba(244, 162, 97, 0.5);
+            z-index: 70;
+        }
+
+        /* OYUN SONU EKRANI (MODAL) */
+        #oyun-sonu-modal {
+            display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.85); z-index: 2000;
+            flex-direction: column; align-items: center; justify-content: center;
+        }
+        #oyun-sonu-icerik {
+            background: #2E8B57; padding: 40px; border-radius: 20px; border: 5px solid #f4a261;
+            text-align: center; color: white; box-shadow: 0 0 50px rgba(244, 162, 97, 0.5);
+        }
+        #kazanan-isim { font-size: 48px; color: #ffd700; margin: 20px 0; text-shadow: 2px 2px 4px black; }
+        .btn-yeni-oyun {
+            background: #f4a261; color: #2a1b19; border: none; padding: 15px 40px;
+            font-size: 24px; font-weight: bold; border-radius: 10px; cursor: pointer;
+            transition: transform 0.2s;
+        }
+        .btn-yeni-oyun:hover { transform: scale(1.1); background: #e67e22; }
+
+        /* ADMIN PANELI */
+        #admin-panel {
+            display: none; /* Sadece admin görecek */
+            position: absolute; top: 10px; right: 10px; background: rgba(0,0,0,0.9); padding: 15px; border-radius: 8px;
+            border: 2px solid #f4a261; z-index: 3000;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.5);
+        }
+        .btn-admin {
+            background: #34495e; color: white; border: 1px solid #fff;
+            padding: 5px 10px; margin: 2px; cursor: pointer; font-size: 12px; border-radius: 4px;
+        }
+        .btn-edit-name {
+            background: none; border: none; cursor: pointer; font-size: 16px; margin-left: 5px;
+        }
+        .bot-badge {
+            background: #7f8c8d; color: white; padding: 2px 5px; border-radius: 3px; font-size: 10px; margin-left: 5px;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="oyun-sonu-modal">
+        <div id="oyun-sonu-icerik">
+            <h1 style="margin:0; font-size:36px;">🏆 OYUN BİTTİ! 🏆</h1>
+            <div id="kazanan-isim">KAZANAN: ???</div>
+            <button class="btn-yeni-oyun" onclick="socket.emit('yeni_oyun')">YENİ OYUN BAŞLAT</button>
+        </div>
+    </div>
+
+    <div id="masa-container">
+        <div id="takim-skorlari">
+            <div>A Takımı: <span id="skor-a">0</span></div>
+            <div>B Takımı: <span id="skor-b">0</span></div>
+        </div>
+
+        <div id="admin-panel">
+            <div style="font-size:12px; color:#f4a261; margin-bottom:5px;">🤖 BOT EKLE</div>
+            <button class="btn-admin" onclick="botEkle('kolay')">Kolay</button>
+            <button class="btn-admin" onclick="botEkle('orta')">Orta</button>
+            <button class="btn-admin" onclick="botEkle('zor')">Zor</button>
+            <button class="btn-admin" onclick="socket.emit('yeni_oyun')" style="background:#c0392b; margin-top:5px; display:block; width:100%;">Oyunu Sıfırla</button>
+        </div>
+
+        <!-- OYUNCU SLOTLARI -->
+        <div id="player-top" class="player-slot"></div>
+        <div id="player-left" class="player-slot"></div>
+        <div id="player-right" class="player-slot"></div>
+        
+        <div id="masa-kece">
+            <div id="deste" onclick="socket.emit('tas_cek')">
+                <div id="gosterge-alani"></div>
+            </div>
+            <div id="at-yeri" onclick="socket.emit('yandan_tas_al')" title="Yandaki oyuncunun taşını al"></div>
+            <div id="sure-sayaci">60</div>
+        </div>
+
+        <div id="area-top" class="opened-area"></div>
+        <div id="area-left" class="opened-area"></div>
+        <div id="area-right" class="opened-area"></div>
+        <div id="area-bottom" class="opened-area"></div>
+
+        <div id="sira-bildirimi" style="position:absolute; top:50%; left:50%; transform:translate(-50%, -150%); color:white; font-weight:bold; font-size:24px; text-shadow:2px 2px 4px black; pointer-events:none;"></div>
+
+        <div id="butonlar">
+            <button class="btn-mic" onclick="cikisYap()" title="Çıkış Yap" style="background:#7f8c8d;">🚪</button>
+            <button id="btn-mic" class="btn-mic" onclick="toggleVoice()" title="Sesli Sohbet">🎤</button>
+            <button class="btn-okey" onclick="akilliDiz()">🧠 BEYNİM YOK</button>
+            <button class="btn-okey" onclick="ciftleriDiz()">🔍 ÇİFTLERİ DİZ</button>
+            <button class="btn-okey" onclick="serileriDiz()">📏 SERİLERİ DİZ</button>
+            <button class="btn-okey btn-ac" onclick="eliAc('seri')">✅ SERİ AÇ</button>
+            <button class="btn-okey btn-ac" onclick="eliAc('cift')">👥 ÇİFT AÇ</button>
+        </div>
+
+        <div id="player-bottom" class="player-slot">
+            <!-- Istaka buraya gelecek -->
+            <div id="istaka"></div>
+            <div class="player-info" style="margin-top:5px;"><span class="player-name" id="my-name">Ben</span> <span class="player-team" id="my-team">A</span></div>
+        </div>
+    </div>
+
+<script>
+    const socket = io();
+    const istaka = document.getElementById('istaka');
+    const atYeri = document.getElementById('at-yeri');
+    let okeyTas = null;
+    let seciliTaslar = [];
+    let playerList = []; // Oyuncu listesini tutmak için
+    let masaSerileri = []; // Açılan ellerin tam verisini tutmak için
+    let isAdmin = false;
+    let mySeat = -1; // Benim koltuk numaram
+    
+    // SESLİ SOHBET DEĞİŞKENLERİ
+    let localStream = null;
+    let peers = {}; // Diğer oyuncularla olan bağlantılar
+    
+    // SES EFEKTLERİ (Online kaynaklardan)
+    const tasSesi = new Audio('https://www.soundjay.com/misc/sounds/poker-chips-stacking-01.mp3');
+    const baslangicSesi = new Audio('https://www.soundjay.com/misc/sounds/magic-chime-01.mp3');
+
+    function sesCal(ses) {
+        ses.currentTime = 0;
+        ses.play().catch(() => {}); // Hata olursa yoksay (Otomatik oynatma engeli vs.)
+    }
+
+    // Yuvaları oluştur
+    for (let i = 0; i < 30; i++) {
+        const yuva = document.createElement('div');
+        yuva.className = 'yuva';
+        istaka.appendChild(yuva);
+    }
+
+    socket.on('connect', () => { 
+        // Otomatik yeniden bağlanma için localStorage kontrolü
+        let kayitliIsim = localStorage.getItem('okey101_isim');
+        if (kayitliIsim) {
+            socket.emit('join', {isim: kayitliIsim});
+        } else {
+            let isim = prompt("Adınız nedir?", "Misafir") || "Misafir";
+            localStorage.setItem('okey101_isim', isim);
+            socket.emit('join', {isim: isim}); 
+        }
+    });
+
+    socket.on('oyuncu_bilgi', (data) => {
+        document.getElementById('my-name').innerText = data.isim;
+    });
+
+    socket.on('admin_status', (data) => {
+        isAdmin = data.is_admin;
+        if(isAdmin) document.getElementById('admin-panel').style.display = 'block';
+    });
+
+    socket.on('uyari', (data) => {
+        alert("⚠️ " + data.msg);
+    });
+
+    socket.on('oyun_bitti', (data) => {
+        document.getElementById('kazanan-isim').innerText = "KAZANAN: " + data.kazanan;
+        document.getElementById('oyun-sonu-modal').style.display = 'flex';
+        
+        // Yeni oyun butonunu sadece admin görebilsin
+        const btn = document.querySelector('.btn-yeni-oyun');
+        if(btn) btn.style.display = isAdmin ? 'inline-block' : 'none';
+        
+        if (sayacInterval) clearInterval(sayacInterval); // Sayacı durdur
+    });
+
+    socket.on('oyun_sifirlandi', () => {
+        document.getElementById('oyun-sonu-modal').style.display = 'none';
+    });
+
+    let sayacInterval;
+    function sayacBaslat(sure) {
+        const div = document.getElementById('sure-sayaci');
+        let kalan = sure;
+        div.innerText = kalan;
+        div.style.borderColor = "#f4a261";
+        div.style.color = "white";
+        
+        if (sayacInterval) clearInterval(sayacInterval);
+        
+        sayacInterval = setInterval(() => {
+            kalan--;
+            div.innerText = kalan;
+            if (kalan <= 10) { // Son 10 saniye kırmızı yap
+                div.style.borderColor = "red";
+                div.style.color = "red";
+            }
+            if (kalan <= 0) clearInterval(sayacInterval);
+        }, 1000);
+    }
+
+    function sayacSifirla() {
+        if (sayacInterval) clearInterval(sayacInterval);
+        const div = document.getElementById('sure-sayaci');
+        div.innerText = "60";
+        div.style.borderColor = "#f4a261";
+        div.style.color = "white";
+    }
+
+    socket.on('sira_bilgisi', (data) => {
+        const div = document.getElementById('sira-bildirimi');
+        if (socket.id === data.aktif_sid) {
+            div.innerText = "🟢 SIRA SİZDE";
+            sayacBaslat(data.sure || 60);
+        } else {
+            div.innerText = `🔴 SIRA OYUNCU ${data.sira + 1}'DE`;
+            sayacSifirla();
+        }
+    });
+
+    // --- KRİTİK: TAŞ ÇEKME DİNLEYİCİSİ ---
+    socket.on('yeni_tas_geldi', (t) => {
+        const yuvalar = document.querySelectorAll('.yuva');
+        for (let y of yuvalar) {
+            if (y.children.length === 0) {
+                const div = createTasElement(t);
+                y.appendChild(div);
+                hareketTanimla(div);
+                break;
+            }
+        }
+        sesCal(tasSesi);
+    });
+
+    function createTasElement(t) {
+        const div = document.createElement('div');
+        div.className = 'tas';
+        div.dataset.renk = t.renk;
+        div.dataset.sayi = t.sayi;
+        
+        if (okeyTas && t.renk === okeyTas.renk && parseInt(t.sayi) === okeyTas.sayi) {
+            // Okey taşı: Yıldız yok, arkası dönük (beyaz boş yüz)
+            div.innerText = "";
+            
+            // Basılı tutunca göster (Uzun basma mantığı)
+            let basmaZamanlayicisi;
+            
+            const goster = () => { 
+                div.style.color = t.renk; 
+                div.innerText = (t.sayi === 0 || t.sayi === '0' || t.sayi === 'J') ? 'J' : t.sayi; 
+            };
+            const gizle = () => { 
+                div.innerText = ""; 
+            };
+            const basla = () => { basmaZamanlayicisi = setTimeout(goster, 1000); }; // 1 saniye basılı tutunca göster
+            const bitir = () => { clearTimeout(basmaZamanlayicisi); gizle(); };
+
+            div.addEventListener('mousedown', basla);
+            div.addEventListener('touchstart', basla, {passive: true});
+            div.addEventListener('mouseup', bitir);
+            div.addEventListener('mouseleave', bitir);
+            div.addEventListener('touchend', bitir);
+        } else {
+            div.style.color = t.renk;
+            div.innerText = (t.sayi === 0 || t.sayi === '0' || t.sayi === 'J') ? 'J' : t.sayi;
+        }
+        return div;
+    }
+
+    function hareketTanimla(tas) {
+        let isDragging = false;
+        let startX, startY;
+        let originalParent = null;
+        let shiftX = 0;
+        let shiftY = 0;
+        let rect;
+
+        const onStart = (e) => {
+            // Mobilde çift tıklama (mouse event tetiklenmesi) sorununu önle
+            if (e.type === 'touchstart') {
+                e.preventDefault();
+            }
+            if (e.target.classList.contains('okey-yildizi')) return; // Yıldıza basınca sürükleme
+
+            const ev = e.type.includes('mouse') ? e : e.touches[0];
+            startX = ev.clientX; startY = ev.clientY;
+            originalParent = tas.parentElement;
+            const rect = tas.getBoundingClientRect();
+            shiftX = ev.clientX - rect.left;
+            shiftY = ev.clientY - rect.top;
+
+            const onMove = (me) => {
+                const mev = me.type.includes('mouse') ? me : me.touches[0];
+                
+                if (!isDragging && (Math.abs(mev.clientX - startX) > 5 || Math.abs(mev.clientY - startY) > 5)) {
+                    isDragging = true;
+                    tas.classList.add('dragging');
+                    // Sürüklerken boyutunu sabitle
+                    tas.style.width = rect.width + 'px';
+                    tas.style.height = rect.height + 'px';
+                    // Transform sorununu çözmek için body'ye taşı
+                    document.body.appendChild(tas);
+                }
+                
+                if (isDragging) {
+                    // Taşın merkezini mouse'a eşitle
+                    tas.style.left = (mev.clientX - shiftX) + "px";
+                    tas.style.top = (mev.clientY - shiftY) + "px";
+                }
+            };
+
+            const onEnd = (ee) => {
+                document.removeEventListener('mousemove', onMove);
+                document.removeEventListener('mouseup', onEnd);
+                document.removeEventListener('touchmove', onMove);
+                document.removeEventListener('touchend', onEnd);
+                
+                if (!isDragging) {
+                    tas.classList.toggle('selected');
+                    if(tas.classList.contains('selected')) seciliTaslar.push(tas);
+                    else seciliTaslar = seciliTaslar.filter(t => t !== tas);
+                } else {
+                    tas.classList.remove('dragging');
+                    const eev = ee.type.includes('mouse') ? ee : ee.changedTouches[0];
+                    tas.style.visibility = 'hidden';
+                    const hedef = document.elementFromPoint(eev.clientX, eev.clientY);
+                    tas.style.visibility = 'visible';
+
+                    if (hedef?.closest('#at-yeri')) {
+                        socket.emit('tas_at', {sayi: tas.dataset.sayi, renk: tas.dataset.renk});
+                        tas.remove();
+                        sesCal(tasSesi);
+                    } else {
+                        const enYakin = bulEnYakinYuva(eev.clientX, eev.clientY);
+                        if (enYakin) {
+                            if (enYakin.children.length > 0 && enYakin !== originalParent) {
+                                originalParent.appendChild(enYakin.children[0]);
+                            }
+                            enYakin.appendChild(tas);
+                        } else {
+                            originalParent.appendChild(tas);
+                        }
+                        sesCal(tasSesi);
+                    }
+                    tas.style.left = ''; tas.style.top = '';
+                    // Stilleri sıfırla
+                    tas.style.position = '';
+                    tas.style.width = '';
+                    tas.style.height = '';
+                    tas.style.zIndex = '';
+                }
+                isDragging = false;
+            };
+            document.addEventListener('mousemove', onMove);
+            document.addEventListener('mouseup', onEnd);
+            document.addEventListener('touchmove', onMove, {passive: false});
+            document.addEventListener('touchend', onEnd);
+        };
+        tas.addEventListener('mousedown', onStart);
+        tas.addEventListener('touchstart', onStart, {passive: false});
+    }
+
+    function bulEnYakinYuva(x, y) {
+        const yuvalar = document.querySelectorAll('.yuva');
+        let enYakin = null; let minMesafe = 80;
+        yuvalar.forEach(yuv => {
+            const r = yuv.getBoundingClientRect();
+            const dist = Math.sqrt(Math.pow(x-(r.left+r.width/2),2) + Math.pow(y-(r.top+r.height/2),2));
+            if (dist < minMesafe) { minMesafe = dist; enYakin = yuv; }
+        });
+        return enYakin;
+    }
+
+    socket.on('taslari_al', (data) => {
+        const yuvalar = document.querySelectorAll('.yuva');
+        yuvalar.forEach((y, i) => {
+            y.innerHTML = '';
+            if (data.taslar[i]) {
+                const div = createTasElement(data.taslar[i]);
+                y.appendChild(div);
+                hareketTanimla(div);
+            }
+        });
+    });
+
+    socket.on('gosterge_belirle', (g) => {
+        let s = parseInt(g.sayi) + 1; if(s > 13) s = 1;
+        okeyTas = {renk: g.renk, sayi: s};
+        
+        // Gösterge taşını destenin üzerine koy
+        const alan = document.getElementById('gosterge-alani');
+        alan.innerHTML = '';
+        const div = createTasElement(g);
+        div.style.position = 'relative'; // Absolute yerine relative
+        div.style.boxShadow = '2px 2px 5px rgba(0,0,0,0.5)';
+        alan.appendChild(div);
+        sesCal(baslangicSesi);
+    });
+
+    // Tüm atılan taş geçmişini yükle
+    socket.on('atilan_taslari_al', (taslar) => {
+        atYeri.innerHTML = "";
+        taslar.forEach(t_info => {
+            const div = createTasElement(t_info.tas);
+            atYeri.appendChild(div);
+        });
+        // En sona kaydır
+        atYeri.scrollLeft = atYeri.scrollWidth;
+    });
+
+    // Yeni taş atıldığında listeye ekle
+    socket.on('yeni_tas_atildi', (data) => {
+        atYeri.appendChild(createTasElement(data.tas));
+        atYeri.scrollLeft = atYeri.scrollWidth; // Otomatik kaydır
+        sesCal(tasSesi);
+    });
+
+    socket.on('masa_guncelle', (acilanEller) => {
+        // Tüm alanları temizle
+        ['area-bottom', 'area-top', 'area-left', 'area-right'].forEach(id => document.getElementById(id).innerHTML = "");
+        masaSerileri = acilanEller; // Tam veriyi sakla
+
+        acilanEller.forEach((el, index) => {
+            // Eli açan oyuncuyu bul
+            const owner = playerList.find(p => p.sid === el.sahip);
+            let targetId = 'area-bottom'; // Varsayılan
+
+            if (owner && mySeat !== -1) {
+                // Göreceli konum hesapla (0: Ben, 1: Sağ, 2: Karşı, 3: Sol)
+                const relPos = (owner.koltuk - mySeat + 4) % 4;
+                if (relPos === 0) targetId = 'area-bottom';
+                else if (relPos === 1) targetId = 'area-right';
+                else if (relPos === 2) targetId = 'area-top';
+                else if (relPos === 3) targetId = 'area-left';
+            }
+
+            const div = document.createElement('div');
+            div.className = 'seri-grubu';
+            div.onclick = () => islekYap(index); // Tıklayınca işlek yap
+            div.title = "Taş işlemek için önce taşa sonra buraya tıklayın";
+            el.taslar.forEach(t => {
+                const s = document.createElement('span');
+                s.style.color = t.renk; s.style.marginRight = "5px"; s.style.fontWeight = "bold";
+                s.innerText = (t.sayi == 0 || t.sayi == 'J') ? 'J' : t.sayi;
+                div.appendChild(s);
+            });
+            document.getElementById(targetId).appendChild(div);
+        });
+    });
+
+    socket.on('oyuncular_guncelle', (liste) => {
+        playerList = liste; // Listeyi kaydet
+        // Önce kendi koltuğumu bul
+        const me = liste.find(p => p.sid === socket.id);
+        if (me) {
+            mySeat = me.koltuk; // Eğer izleyici ise -1 döner
+            document.getElementById('my-team').innerText = me.takim;
+            
+            // İzleyici kontrolü
+            if (mySeat === -1) {
+                document.getElementById('butonlar').style.display = 'none'; // Butonları gizle
+                document.getElementById('istaka').style.display = 'none'; // Istakayı gizle
+            } else {
+                document.getElementById('butonlar').style.display = 'flex';
+                document.getElementById('istaka').style.display = 'grid';
+            }
+        }
+        // Takım skorlarını hesapla
+        let skorA = 0, skorB = 0;
+
+        liste.forEach(p => {
+            if (p.takim === 'A') skorA += p.puan;
+            else skorB += p.puan;
+
+            // Diğer oyuncuları yerleştir
+            // Eğer izleyiciysem (mySeat == -1), herkesi göster. Eğer oyuncuysam, kendim hariç herkesi göster.
+            if (p.koltuk !== -1 && (p.sid !== socket.id || mySeat === -1)) {
+                let viewSeat = (mySeat === -1) ? 0 : mySeat; // İzleyiciler masayı 0. koltuk açısından görür
+                
+                // Göreceli konum hesapla (0: Ben, 1: Sağ, 2: Karşı, 3: Sol)
+                // Formül: (Hedef - Ben + 4) % 4
+                const relPos = (p.koltuk - viewSeat + 4) % 4;
+                let slotId = "";
+                if (relPos === 0 && mySeat === -1) slotId = "player-bottom"; // İzleyici için alt koltuk
+                else if (relPos === 1) slotId = "player-right";
+                else if (relPos === 2) slotId = "player-top";
+                else if (relPos === 3) slotId = "player-left";
+
+                if (slotId) {
+                    const slot = document.getElementById(slotId);
+                    let html = `
+                        <div class="player-avatar">
+                            👤
+                            <span class="player-team">${p.takim}</span>
+                        </div>
+                        <div class="player-info">
+                            <div class="player-name">${p.isim} ${p.is_bot ? '<span class="bot-badge">BOT</span>' : ''}</div>
+                            <div class="player-score">Puan: ${p.puan}</div>
+                            <div style="font-size:11px; color:#ccc;">Taş: ${p.tas_sayisi}</div>
+                        </div>
+                    `;
+                    if(isAdmin && !p.is_bot) {
+                        html += `<button class="btn-edit-name" onclick="isimDuzenle('${p.sid}', '${p.isim}')" style="background:white; border-radius:50%; width:20px; height:20px; font-size:12px; margin-top:5px;">✏️</button>`;
+                    }
+                    slot.innerHTML = html;
+                }
+            }
+        });
+            
+        document.getElementById('skor-a').innerText = skorA;
+        document.getElementById('skor-b').innerText = skorB;
+    });
+
+    function eliAc(tip) {
+        if (seciliTaslar.length < 2) return alert("Taş seçmelisin!");
+        socket.emit('el_ac', {taslar: seciliTaslar.map(t => ({sayi: t.dataset.sayi, renk: t.dataset.renk})), tip: tip});
+        seciliTaslar.forEach(t => t.classList.remove('selected'));
+        seciliTaslar = [];
+    }
+
+    function islekYap(setIndex) {
+        if (seciliTaslar.length !== 1) {
+            return alert("İşlek yapmak için ıstakanızdan sadece 1 taş seçmelisiniz!");
+        }
+        const tas = seciliTaslar[0];
+        socket.emit('islek_yap', {tas: {sayi: tas.dataset.sayi, renk: tas.dataset.renk}, set_index: setIndex});
+    }
+
+    function ciftleriDiz() {
+        const taslar = Array.from(document.querySelectorAll('.yuva .tas'));
+        const gruplar = {};
+
+        // Taşları renk ve sayılarına göre grupla
+        taslar.forEach(tas => {
+            const key = tas.dataset.renk + '-' + tas.dataset.sayi;
+            if (!gruplar[key]) gruplar[key] = [];
+            gruplar[key].push(tas);
+        });
+
+        let ciftler = [];
+        let tekler = [];
+
+        // Çiftleri ve tekleri ayır
+        Object.values(gruplar).forEach(grup => {
+            if (grup.length >= 2) {
+                ciftler.push(...grup);
+            } else {
+                tekler.push(...grup);
+            }
+        });
+
+        // Sıralama fonksiyonu (Önce sayı, sonra renk)
+        const rO = {'red': 1, 'black': 2, 'blue': 3, 'orange': 4};
+        const sortFn = (a, b) => {
+            return (parseInt(a.dataset.sayi) - parseInt(b.dataset.sayi)) || (rO[a.dataset.renk] - rO[b.dataset.renk]);
+        };
+        
+        ciftler.sort(sortFn);
+        tekler.sort(sortFn);
+
+        const yeniSira = [...ciftler, ...tekler];
+        const yuvalar = document.querySelectorAll('.yuva');
+        yuvalar.forEach((y, i) => { y.innerHTML = ''; if(yeniSira[i]) y.appendChild(yeniSira[i]); });
+    }
+
+    function serileriDiz() {
+        let taslar = Array.from(document.querySelectorAll('.yuva .tas'));
+        let seriler = [];
+        
+        // 1. ADIM: RENK SERİLERİ (Aynı renk, ardışık sayılar: 1-2-3)
+        const renkler = ['red', 'black', 'blue', 'orange'];
+        let mapRenk = { 'red': [], 'black': [], 'blue': [], 'orange': [] };
+        
+        taslar.forEach(t => {
+            if(mapRenk[t.dataset.renk]) mapRenk[t.dataset.renk].push(t);
+        });
+
+        renkler.forEach(r => {
+            let list = mapRenk[r];
+            let mapSayi = {};
+            list.forEach(t => {
+                let s = parseInt(t.dataset.sayi);
+                if (!mapSayi[s]) mapSayi[s] = [];
+                mapSayi[s].push(t);
+            });
+
+            for (let start = 1; start <= 13; start++) {
+                while (true) {
+                    let current = start;
+                    let tempSeri = [];
+                    while (mapSayi[current] && mapSayi[current].length > 0) {
+                        tempSeri.push(mapSayi[current][0]); 
+                        current++;
+                    }
+                    
+                    if (tempSeri.length >= 3) {
+                        tempSeri.forEach(t => {
+                            mapSayi[parseInt(t.dataset.sayi)].shift();
+                            seriler.push(t);
+                            taslar = taslar.filter(x => x !== t);
+                        });
+                    } else {
+                        break;
+                    }
+                }
+            }
+        });
+
+        // 2. ADIM: SAYI GRUPLARI (Farklı renk, aynı sayı: Kırmızı 7, Siyah 7, Mavi 7)
+        let mapSayiGrup = {};
+        taslar.forEach(t => {
+            let s = parseInt(t.dataset.sayi);
+            if (!mapSayiGrup[s]) mapSayiGrup[s] = [];
+            mapSayiGrup[s].push(t);
+        });
+
+        for (let s = 1; s <= 13; s++) {
+            if (mapSayiGrup[s]) {
+                let grup = mapSayiGrup[s];
+                let renkKumesi = {};
+                grup.forEach(t => {
+                    if(!renkKumesi[t.dataset.renk]) renkKumesi[t.dataset.renk] = [];
+                    renkKumesi[t.dataset.renk].push(t);
+                });
+                
+                let renklerMevcut = Object.keys(renkKumesi);
+                if (renklerMevcut.length >= 3) {
+                    renklerMevcut.forEach(r => {
+                        let t = renkKumesi[r].shift();
+                        seriler.push(t);
+                        taslar = taslar.filter(x => x !== t);
+                    });
+                }
+            }
+        }
+
+        // 3. ADIM: KALANLARI SIRALA
+        let kalanlar = taslar;
+        const rO = {'red': 1, 'black': 2, 'blue': 3, 'orange': 4};
+        kalanlar.sort((a, b) => (rO[a.dataset.renk] - rO[b.dataset.renk]) || (parseInt(a.dataset.sayi) - parseInt(b.dataset.sayi)));
+
+        const yeniSira = [...seriler, ...kalanlar];
+        const yuvalar = document.querySelectorAll('.yuva');
+        yuvalar.forEach((y, i) => { y.innerHTML = ''; if(yeniSira[i]) y.appendChild(yeniSira[i]); });
+    }
+
+    function botEkle(zorluk) {
+        socket.emit('admin_add_bot', {difficulty: zorluk});
+    }
+
+    function isimDuzenle(sid, eskiIsim) {
+        let yeni = prompt("Yeni isim:", eskiIsim);
+        if(yeni && yeni !== eskiIsim) {
+            socket.emit('admin_rename_player', {target_sid: sid, new_name: yeni});
+        }
+    }
+
+    function akilliDiz() {
+        const taslar = Array.from(document.querySelectorAll('.yuva .tas'));
+        
+        const getTilesData = () => taslar.map(t => ({
+            element: t,
+            renk: t.dataset.renk,
+            sayi: parseInt(t.dataset.sayi)
+        }));
+
+        const findRuns = (pool) => {
+            let sets = [];
+            let usedIndices = new Set();
+            const renkler = ['red', 'black', 'blue', 'orange'];
+            let map = { 'red': [], 'black': [], 'blue': [], 'orange': [] };
+            pool.forEach((t, i) => { if(map[t.renk]) map[t.renk].push({ ...t, originalIndex: i }); });
+
+            renkler.forEach(r => {
+                let list = map[r];
+                let numMap = {};
+                list.forEach(item => { if(!numMap[item.sayi]) numMap[item.sayi] = []; numMap[item.sayi].push(item); });
+
+                for (let start = 1; start <= 13; start++) {
+                    while(true) {
+                        let current = start;
+                        let tempSet = [];
+                        while(numMap[current] && numMap[current].length > 0) {
+                            tempSet.push(numMap[current][0]);
+                            current++;
+                        }
+                        if(tempSet.length >= 3) {
+                            let setElements = [];
+                            tempSet.forEach(item => {
+                                numMap[item.sayi].shift();
+                                usedIndices.add(item.originalIndex);
+                                setElements.push(item.element);
+                            });
+                            sets.push(setElements);
+                        } else { break; }
+                    }
+                }
+            });
+            return { sets, remaining: pool.filter((_, i) => !usedIndices.has(i)) };
+        };
+
+        const findGroups = (pool) => {
+            let sets = [];
+            let usedIndices = new Set();
+            let numMap = {};
+            pool.forEach((t, i) => { if(!numMap[t.sayi]) numMap[t.sayi] = []; numMap[t.sayi].push({ ...t, originalIndex: i }); });
+
+            for(let s = 1; s <= 13; s++) {
+                if(numMap[s]) {
+                    let group = numMap[s];
+                    let colorMap = {};
+                    group.forEach(item => { if(!colorMap[item.renk]) colorMap[item.renk] = []; colorMap[item.renk].push(item); });
+                    
+                    while(true) {
+                        let distinctColors = Object.keys(colorMap).filter(k => colorMap[k].length > 0);
+                        if(distinctColors.length >= 3) {
+                            let setElements = [];
+                            distinctColors.forEach(c => {
+                                let item = colorMap[c].shift();
+                                usedIndices.add(item.originalIndex);
+                                setElements.push(item.element);
+                            });
+                            sets.push(setElements);
+                        } else { break; }
+                    }
+                }
+            }
+            return { sets, remaining: pool.filter((_, i) => !usedIndices.has(i)) };
+        };
+
+        // Strateji 1: Önce Seriler, Sonra Gruplar
+        let data1 = getTilesData();
+        let res1_runs = findRuns(data1);
+        let res1_groups = findGroups(res1_runs.remaining);
+        let score1 = res1_runs.sets.reduce((a,b)=>a+b.length,0) + res1_groups.sets.reduce((a,b)=>a+b.length,0);
+
+        // Strateji 2: Önce Gruplar, Sonra Seriler
+        let data2 = getTilesData();
+        let res2_groups = findGroups(data2);
+        let res2_runs = findRuns(res2_groups.remaining);
+        let score2 = res2_groups.sets.reduce((a,b)=>a+b.length,0) + res2_runs.sets.reduce((a,b)=>a+b.length,0);
+
+        let finalSets = [], finalRemaining = [];
+        if (score1 >= score2) {
+            res1_runs.sets.forEach(s => finalSets.push(...s)); res1_groups.sets.forEach(s => finalSets.push(...s)); finalRemaining = res1_groups.remaining.map(x => x.element);
+        } else {
+            res2_groups.sets.forEach(s => finalSets.push(...s)); res2_runs.sets.forEach(s => finalSets.push(...s)); finalRemaining = res2_runs.remaining.map(x => x.element);
+        }
+
+        const rO = {'red': 1, 'black': 2, 'blue': 3, 'orange': 4};
+        finalRemaining.sort((a, b) => (rO[a.dataset.renk] - rO[b.dataset.renk]) || (parseInt(a.dataset.sayi) - parseInt(b.dataset.sayi)));
+        const yeniSira = [...finalSets, ...finalRemaining];
+        const yuvalar = document.querySelectorAll('.yuva');
+        yuvalar.forEach((y, i) => { y.innerHTML = ''; if(yeniSira[i]) y.appendChild(yeniSira[i]); });
+    }
+
+    // --- SESLİ SOHBET (WEBRTC) ---
+    async function toggleVoice() {
+        const btn = document.getElementById('btn-mic');
+        
+        if (localStream) {
+            // Kapat
+            localStream.getTracks().forEach(track => track.stop());
+            localStream = null;
+            btn.classList.remove('active');
+            btn.innerHTML = "🎤";
+            // Bağlantıları kapat
+            Object.values(peers).forEach(p => p.close());
+            peers = {};
+        } else {
+            // Aç
+            try {
+                localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+                btn.classList.add('active');
+                btn.innerHTML = "🔊";
+                
+                // Mevcut oyunculara bağlan
+                playerList.forEach(p => {
+                    if (p.sid !== socket.id) {
+                        initiatePeerConnection(p.sid);
+                    }
+                });
+            } catch (err) {
+                alert("Mikrofon izni verilmedi: " + err);
+            }
+        }
+    }
+
+    function initiatePeerConnection(targetSid) {
+        const peer = createPeer(targetSid);
+        peers[targetSid] = peer;
+        // Sadece ID karşılaştırması yaparak tek taraflı teklif oluşturmayı garantiye alalım (Collision handling)
+        // Basitlik için: Herkes herkese bağlanmayı dener, WebRTC bunu yönetir.
+        // Ancak daha temiz olması için: Sadece ben yeni katıldıysam veya butona bastıysam başlatıyorum.
+        peer.createOffer().then(offer => {
+            peer.setLocalDescription(offer);
+            socket.emit('voice_signal', { target: targetSid, signal: { type: 'offer', sdp: offer } });
+        });
+    }
+
+    function createPeer(targetSid) {
+        const peer = new RTCPeerConnection({
+            iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
+        });
+
+        if (localStream) {
+            localStream.getTracks().forEach(track => peer.addTrack(track, localStream));
+        }
+
+        peer.onicecandidate = (e) => {
+            if (e.candidate) {
+                socket.emit('voice_signal', { target: targetSid, signal: { type: 'candidate', candidate: e.candidate } });
+            }
+        };
+
+        peer.ontrack = (e) => {
+            const audio = new Audio();
+            audio.srcObject = e.streams[0];
+            audio.play();
+        };
+
+        return peer;
+    }
+
+    socket.on('voice_signal', async (data) => {
+        if (!localStream) return; // Mikrofonum kapalıysa sinyalleri yoksay
+        
+        const { sender, signal } = data;
+        if (!peers[sender]) peers[sender] = createPeer(sender);
+        const peer = peers[sender];
+
+        if (signal.type === 'offer') {
+            await peer.setRemoteDescription(new RTCSessionDescription(signal.sdp));
+            const answer = await peer.createAnswer();
+            await peer.setLocalDescription(answer);
+            socket.emit('voice_signal', { target: sender, signal: { type: 'answer', sdp: answer } });
+        } else if (signal.type === 'answer') {
+            await peer.setRemoteDescription(new RTCSessionDescription(signal.sdp));
+        } else if (signal.type === 'candidate') {
+            await peer.addIceCandidate(new RTCIceCandidate(signal.candidate));
+        }
+    });
+
+    function cikisYap() {
+        if(confirm("Çıkış yapmak istediğinize emin misiniz?")) {
+            localStorage.removeItem('okey101_isim');
+            location.reload();
+        }
+    }
+
+    function akilliDiz() {
+        const taslar = Array.from(document.querySelectorAll('.yuva .tas'));
+        
+        const getTilesData = () => taslar.map(t => ({
+            element: t,
+            renk: t.dataset.renk,
+            sayi: parseInt(t.dataset.sayi)
+        }));
+
+        const findRuns = (pool) => {
+            let sets = [];
+            let usedIndices = new Set();
+            const renkler = ['red', 'black', 'blue', 'orange'];
+            let map = { 'red': [], 'black': [], 'blue': [], 'orange': [] };
+            pool.forEach((t, i) => { if(map[t.renk]) map[t.renk].push({ ...t, originalIndex: i }); });
+
+            renkler.forEach(r => {
+                let list = map[r];
+                let numMap = {};
+                list.forEach(item => { if(!numMap[item.sayi]) numMap[item.sayi] = []; numMap[item.sayi].push(item); });
+
+                for (let start = 1; start <= 13; start++) {
+                    while(true) {
+                        let current = start;
+                        let tempSet = [];
+                        while(numMap[current] && numMap[current].length > 0) {
+                            tempSet.push(numMap[current][0]);
+                            current++;
+                        }
+                        if(tempSet.length >= 3) {
+                            let setElements = [];
+                            tempSet.forEach(item => {
+                                numMap[item.sayi].shift();
+                                usedIndices.add(item.originalIndex);
+                                setElements.push(item.element);
+                            });
+                            sets.push(setElements);
+                        } else { break; }
+                    }
+                }
+            });
+            return { sets, remaining: pool.filter((_, i) => !usedIndices.has(i)) };
+        };
+
+        const findGroups = (pool) => {
+            let sets = [];
+            let usedIndices = new Set();
+            let numMap = {};
+            pool.forEach((t, i) => { if(!numMap[t.sayi]) numMap[t.sayi] = []; numMap[t.sayi].push({ ...t, originalIndex: i }); });
+
+            for(let s = 1; s <= 13; s++) {
+                if(numMap[s]) {
+                    let group = numMap[s];
+                    let colorMap = {};
+                    group.forEach(item => { if(!colorMap[item.renk]) colorMap[item.renk] = []; colorMap[item.renk].push(item); });
+                    
+                    while(true) {
+                        let distinctColors = Object.keys(colorMap).filter(k => colorMap[k].length > 0);
+                        if(distinctColors.length >= 3) {
+                            let setElements = [];
+                            distinctColors.forEach(c => {
+                                let item = colorMap[c].shift();
+                                usedIndices.add(item.originalIndex);
+                                setElements.push(item.element);
+                            });
+                            sets.push(setElements);
+                        } else { break; }
+                    }
+                }
+            }
+            return { sets, remaining: pool.filter((_, i) => !usedIndices.has(i)) };
+        };
+
+        // Strateji 1: Önce Seriler, Sonra Gruplar
+        let data1 = getTilesData();
+        let res1_runs = findRuns(data1);
+        let res1_groups = findGroups(res1_runs.remaining);
+        let score1 = res1_runs.sets.reduce((a,b)=>a+b.length,0) + res1_groups.sets.reduce((a,b)=>a+b.length,0);
+
+        // Strateji 2: Önce Gruplar, Sonra Seriler
+        let data2 = getTilesData();
+        let res2_groups = findGroups(data2);
+        let res2_runs = findRuns(res2_groups.remaining);
+        let score2 = res2_groups.sets.reduce((a,b)=>a+b.length,0) + res2_runs.sets.reduce((a,b)=>a+b.length,0);
+
+        let finalSets = [], finalRemaining = [];
+        if (score1 >= score2) {
+            res1_runs.sets.forEach(s => finalSets.push(...s)); res1_groups.sets.forEach(s => finalSets.push(...s)); finalRemaining = res1_groups.remaining.map(x => x.element);
+        } else {
+            res2_groups.sets.forEach(s => finalSets.push(...s)); res2_runs.sets.forEach(s => finalSets.push(...s)); finalRemaining = res2_runs.remaining.map(x => x.element);
+        }
+
+        const rO = {'red': 1, 'black': 2, 'blue': 3, 'orange': 4};
+        finalRemaining.sort((a, b) => (rO[a.dataset.renk] - rO[b.dataset.renk]) || (parseInt(a.dataset.sayi) - parseInt(b.dataset.sayi)));
+        const yeniSira = [...finalSets, ...finalRemaining];
+        const yuvalar = document.querySelectorAll('.yuva');
+        yuvalar.forEach((y, i) => { y.innerHTML = ''; if(yeniSira[i]) y.appendChild(yeniSira[i]); });
+    }
+</script>
+</body>
+</html>
