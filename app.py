@@ -7,7 +7,10 @@ import itertools
 import uuid
 import os
 
-app = Flask(__name__)
+# Klasör yolunu garantiye al (Hata 500 Çözümü)
+basedir = os.path.abspath(os.path.dirname(__file__))
+app = Flask(__name__, template_folder=os.path.join(basedir, 'templates'))
+
 app.config['SECRET_KEY'] = 'okey_pro_secret_999'
 # Profesyonel yapı için threading modunda çalıştırıyoruz
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading')
@@ -298,7 +301,11 @@ def validate_pairs(taslar, okey_tas):
 
 @app.route('/')
 def index():
-    return render_template('index.html')
+    try:
+        return render_template('index.html')
+    except Exception as e:
+        # Hata varsa ekrana yazdır (Beyaz ekran yerine hatayı gör)
+        return f"<h3>Sunucu Hatası:</h3><p>{e}</p>", 500
 
 @socketio.on('join')
 def handle_join(data):
@@ -346,7 +353,8 @@ def handle_join(data):
     
     # Benzersiz isim ve Admin kontrolü
     isim = get_unique_name(raw_isim)
-    is_admin = (isim.lower() == 'ege')
+    # İlk giren kişi veya adı 'ege' olan yönetici olsun
+    is_admin = (len(oyun_merkezi['oyuncular']) == 0) or (isim.lower() == 'ege')
     
     join_room("masa1")
     
@@ -805,6 +813,7 @@ def handle_yeni_oyun():
     sender_sid = request.sid
     # Sadece admin (Ege) oyunu sıfırlayabilir
     if sender_sid not in oyun_merkezi['oyuncular'] or not oyun_merkezi['oyuncular'][sender_sid].get('is_admin'):
+        emit('uyari', {'msg': 'Oyunu sadece yönetici (ilk giren oyuncu) başlatabilir!'})
         return
 
     global TUR_SAYISI
@@ -925,13 +934,5 @@ def handle_voice_signal(data):
         emit('voice_signal', {'sender': sender_sid, 'signal': signal}, room=target_sid)
 
 if __name__ == '__main__':
-    print("----------------------------------------------------------------")
-    print("Oyun Sunucusu Başlatıldı! http://localhost:5001 adresinden girebilirsiniz.")
-    print("Eğer arkadaşlarınızla oynayacaksanız, bu pencereyi KAPATMAYIN.")
-    print("----------------------------------------------------------------")
-    # Oyun 5001 portunda başlıyor
-    # Tünel bağlantılarında (ssh/ngrok) debug modu sorun çıkarabilir, False yapıyoruz.
-    socketio.run(app, host='0.0.0.0', port=5001, debug=False)
-    # Bulut sunucu için PORT ortam değişkenini kullan
     port = int(os.environ.get("PORT", 5001))
-    socketio.run(app, host='0.0.0.0', port=port, debug=False)
+    socketio.run(app, host='0.0.0.0', port=port, debug=False, allow_unsafe_werkzeug=True)
